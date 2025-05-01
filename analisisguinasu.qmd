@@ -1,0 +1,411 @@
+---
+title: "Expression of carboxylesterase and paraoxonase in the placenta and their association with chlorpyrifos exposure during pregnancy"
+author: "Piuque M. Rodriguez, Berta Vera, Carolina Burgos, Gustavo Gimenez, Karina 
+Miglioranza, Cristina L. Ramirez, Andrea Lavalle , Paola M. Ondarza, Natalia L.
+Guiñazú"
+format: 
+  html:
+    toc: true
+    toc-depth: 3
+editor: visual
+---
+
+# Prepare the data
+
+# Load essential libraries for data manipulation
+
+
+Loading basic libraries to manipulate data.
+
+
+```{r}
+library(tidyverse) #tidyverse environment
+```
+
+
+
+
+# Import data from .ods file
+
+
+```{r}
+datos_clor <- readODS::read_ods("Tabla_05_04_25.ods")
+```
+
+
+
+# Display basic summary statistics
+
+
+```{r}
+summary(datos_clor)
+```
+
+
+Look some NA values.
+
+
+
+An descripción of columns
+```{r}
+glimpse(datos_clor)
+```
+
+
+First past to factor all character columns
+
+
+
+```{r}
+datos_clor <-  datos_clor |>   mutate(
+    Niv_educ = factor(Niv_educ,
+                      levels = 1:4,
+                      labels = c("No education/Primary incomplete",
+                                 "Primary complete",
+                                 "Secondary complete",
+                                 "Greater")),
+    Sexo_neo = factor(Sexo_neo,
+                      levels = c(0, 1),
+                      labels = c("Femenino", "Masculino")),
+    Fumadora_pas = factor(Fumadora_pas,
+                      levels = c(0, 1),
+                      labels = c("NO", "SI")),
+     Fumiga = factor(Fumiga,
+                      levels = c(0, 1),
+                      labels = c("NO", "SI")),
+    Pozo = factor(Pozo,
+                      levels = c(0, 1),
+                      labels = c("NO", "SI")),
+    Chlorpyrifos_detection = case_when(
+      Chlorpyrifos_detection == ">LOQ" ~ 1L,
+      Chlorpyrifos_detection == "<LOD" ~ 0L,
+      TRUE ~ NA_integer_
+    ),
+    Paridad = as.integer(Paridad),
+    IMC = factor(IMC,
+                      levels = 0:3,
+                      labels = c("normal",
+                                 "underweight",
+                                 "overweight",
+                                 "obesity")),
+    Grupo = fct_relevel(Grupo, "Urbano", "Rural")
+  )
+
+datos_clor
+
+```
+
+
+
+ Count NA values for each column in long format
+
+```{r}
+datos_clor  |> 
+  summarise(across(everything(), ~sum(is.na(.)))) |> 
+  pivot_longer(cols = everything(), names_to = "columna", values_to = "n_NA") |> 
+  mutate(tipo = sapply(datos_clor[, columna], class)) %>%
+  relocate(tipo, .after = columna) %>%
+  arrange(desc(n_NA))
+
+```
+
+
+Compute means in some variables.
+
+
+```{r}
+datos_clor  |> group_by(Grupo) |> summarise(Medias = mean( Ind_Pond, na.rm = TRUE))
+```
+
+
+# Compute Pearson correlation matrix with complete cases only
+
+
+
+```{r}
+matr_corr <- datos_clor |> select(where(is.numeric)) |> cor(use = "complete.obs") |> round(digits = 2)
+```
+
+
+
+# Compute Spearman correlation matrix with complete cases only
+
+
+```{r}
+datos_clor |> select(where(is.numeric)) |> cor(use = "complete.obs", method = "spearman") |> round(digits = 2)
+```
+
+
+
+# Visualize correlation matrix with corrplot
+
+
+```{r, fig.width=8.5, fig.height=8.5}
+library(corrplot)
+
+
+# Create the correlogram 
+corrplot(matr_corr, type = "upper",  
+         method = "square",  
+         addCoef.col = "black",  
+         tl.col = "black", 
+         tl.srt = 45,
+         tl.cex = 0.8,      # Tamaño de letra
+         number.cex = 0.7)  # Ta)
+```
+
+
+
+Plot pairwise relationships with GGally::ggpairs
+
+
+
+```{r warning=FALSE, fig.align='center', fig.width=7, fig.height=6}
+library(GGally)
+datos_clor  |>   ggpairs(    # Data frame
+        columns = c(14:20,27)) # Columns
+```
+
+
+
+
+
+
+
+```{r warning=FALSE, fig.align='center', fig.width=7, fig.height=6}
+library(GGally)
+datos_clor  |>   ggpairs(    # Data frame
+        columns = c(14:20,27),
+        aes(color = Grupo,  # Color by group (cat. variable)
+            alpha = 0.5),
+        upper = list(continuous = wrap("cor", size = 2.5))
+        )
+         # Columns
+```
+
+
+
+# Fit linear model to CPF
+
+
+```{r}
+modelo_lm <- lm(CPF ~ Edad +Pozo+IMC+Fumiga+Niv_educ+Paridad+Fumadora_pas+
+                Edad_Gest+Sexo_neo+CES+CES_4_MUBA+CES2+PON+PON_DHC+
+                  PON2+Peso_Neo+Peso_Placenta+Talla+Per_Cef+Ind_Plac+Ind_Pond     , 
+                data = datos_clor)
+summary(modelo_lm)
+```
+
+
+
+```{r}
+car::Anova(modelo_lm, type="III")
+```
+
+
+No found any effect since F test was not significatn.
+
+
+# Fit logistic regression model to binary variable Chlorpyrifos_detection
+
+
+```{r}
+modelo_glm <- glm(Chlorpyrifos_detection ~ Edad +Pozo+IMC+Fumiga+Niv_educ+Paridad+Fumadora_pas+
+                Edad_Gest+Sexo_neo+CES+CES_4_MUBA+CES2+PON+PON_DHC+
+                  PON2+Peso_Neo+Peso_Placenta+Talla+Per_Cef+Ind_Plac+Ind_Pond + Grupo    , 
+                data = datos_clor, family = binomial(link = "logit"))
+summary(modelo_glm)
+```
+
+
+Clean the NA's values. Remove rows with na values.Perform stepwise selection using BIC
+
+
+```{r}
+datos_clor_limpio <- datos_clor %>% drop_na()
+modelo_glm_limpio <- glm(Chlorpyrifos_detection ~ Edad +Pozo+IMC+Fumiga+Niv_educ+Paridad+Fumadora_pas+
+                Edad_Gest+Sexo_neo+CES+CES_4_MUBA+CES2+PON+PON_DHC+
+                  PON2+Peso_Neo+Peso_Placenta+Talla+Per_Cef+Ind_Plac+Ind_Pond + Grupo    , 
+                data = datos_clor_limpio, family = binomial(link = "logit"))
+modelo_seleccion <- step(modelo_glm_limpio, direction = "both", k = log(63))
+summary(modelo_seleccion)
+
+```
+
+
+Only two variables was significant Ind_Pond and Group. Test posible interaction or aditive effects.
+
+
+```{r}
+
+modelo_final1 <- glm(formula = Chlorpyrifos_detection ~ Ind_Pond * Grupo, 
+                    family = binomial(link = "logit"),     data = datos_clor_limpio)
+modelo_final2 <- glm(formula = Chlorpyrifos_detection ~ Ind_Pond + Grupo, 
+                    family = binomial(link = "logit"),    data = datos_clor_limpio)
+modelo_final3 <- glm(formula = Chlorpyrifos_detection ~  Grupo, 
+                    family = binomial(link = "logit"),     data = datos_clor_limpio)
+anova(modelo_final1, modelo_final2, modelo_final3, test = "LRT")
+
+```
+
+
+There was aditive efect only.Then check overdispersion in the model.
+
+
+```{r}
+summary(modelo_final2)
+performance::check_overdispersion(modelo_final2)
+```
+
+
+Extract coefficients. In this case logODDs.
+
+
+```{r}
+summary(modelo_final2)$coefficients
+```
+
+
+
+Transform to Odds Ratios by means log transformation.
+
+
+
+```{r}
+exp(coefficients(modelo_final2))[2:3]
+```
+
+Compute Pseudo R2.
+
+```{r}
+DescTools::PseudoR2( modelo_final2, which = "all")
+```
+
+
+Predict probabilities to mean ind_pon and Rural Group.
+
+
+```{r}
+newdata <- data.frame(Ind_Pond = 2.96, Grupo = "Rural")
+predict(modelo_final2, newdata = newdata, type = "response")
+
+```
+
+
+The probability to detect cp is too high in rural group.
+
+
+```{r}
+newdata <- data.frame(Ind_Pond = 2.9, Grupo = "Urbano")
+predict(modelo_final2, newdata = newdata, type = "response")
+
+```
+
+
+We can understand the final model as an ANCOVA. Try to plot them.
+```{r}
+# Crear un rango de valores para Ind_Pond
+x_vals <- seq(min(datos_clor_limpio$Ind_Pond), 
+              max(datos_clor_limpio$Ind_Pond), 
+              length.out = 100)
+
+# Crear data.frame con combinaciones para Rural y Urbano
+nuevos_datos <- data.frame(
+  Ind_Pond = rep(x_vals, 2),
+  Grupo = rep(c("Rural", "Urbano"), each = length(x_vals))
+)
+
+
+
+# Predict probabilities and plot logistic model
+
+
+
+nuevos_datos$prob <- predict(modelo_final2, newdata = nuevos_datos, type = "response")
+
+# Graficar
+library(ggplot2)
+ggplot(nuevos_datos, aes(x = Ind_Pond, y = prob, color = Grupo)) +
+  geom_line(size = 1.2) +
+  labs(
+    title = "Probabilidad de detección de Chlorpyrifos",
+    x = "Ind_Pond",
+    y = "Probabilidad de detección",
+    color = "Grupo"
+  ) +
+  theme_minimal()
+```
+
+
+
+```{r}
+ggplot(nuevos_datos, aes(x = Ind_Pond, y = prob, color = Grupo)) +
+  geom_line(size = 1.2) +
+  geom_jitter(data = datos_clor_limpio, 
+              aes(x = Ind_Pond, y = Chlorpyrifos_detection, color = Grupo),
+              height = 0.05, alpha = 0.5) +
+  labs(
+    title = "Modelo Logístico: Detección de Chlorpyrifos",
+    x = "Ind_Pond",
+    y = "Probabilidad de detección",
+    color = "Grupo"
+  ) +
+  theme_minimal()
+
+```
+
+
+
+# Further reduced models with AIC
+
+
+
+```{r}
+modelo_glm_limpio <- glm(Chlorpyrifos_detection ~ Edad +Pozo+IMC+Fumiga+Niv_educ+Paridad+Fumadora_pas+
+                Edad_Gest+Sexo_neo+CES+CES_4_MUBA+CES2+PON+PON_DHC+
+                  PON2+Peso_Neo+Peso_Placenta+Talla+Per_Cef+Ind_Plac+Ind_Pond + Grupo    , 
+                data = datos_clor_limpio, family = binomial(link = "logit"))
+modelo_seleccionAIC <- step(modelo_glm_limpio, direction = "both")
+summary(modelo_seleccionAIC)
+
+```
+
+
+
+
+
+
+
+```{r}
+glm_AIC_reducido <- glm(formula = Chlorpyrifos_detection ~     Edad_Gest + CES2 + PON2 + Talla + Ind_Pond + Grupo, family = binomial(link = "logit"), 
+    data = datos_clor_limpio)
+summary(glm_AIC_reducido)
+```
+
+```{r}
+glm_AIC_reducido2 <- glm(formula = Chlorpyrifos_detection ~     Edad_Gest + CES2 + Talla + Ind_Pond + Grupo, family = binomial(link = "logit"), 
+    data = datos_clor_limpio)
+summary(glm_AIC_reducido2)
+```
+
+
+
+## Log-transformed CPF model
+
+
+
+```{r}
+modelo_lm2 <- lm(log(CPF) ~ Edad +Pozo+IMC+Fumiga+Niv_educ+Paridad+Fumadora_pas+
+                Edad_Gest+Sexo_neo+CES+CES_4_MUBA+CES2+PON+PON_DHC+
+                  PON2+Peso_Neo+Peso_Placenta+Talla+Per_Cef+Ind_Plac+Ind_Pond     , 
+                data = datos_clor)
+summary(modelo_lm2)
+```
+
+
+```{r}
+car::Anova(modelo_lm2, type="III")
+```
+
+
+No effect was found
